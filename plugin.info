@@ -1,0 +1,9 @@
+{
+	"title": "$:/plugins/bj/editboost",
+	"description": "only on char update with preview",
+	"author": "Jeffrey Wilkinson",
+	"version": "0.0.0",
+	"core-version": ">=5.0.7",
+	"source": "https://github.com/buggyj/TW5-editboost",
+	"plugin-type": "plugin"
+}
