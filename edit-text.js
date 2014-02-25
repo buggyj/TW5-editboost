@@ -141,7 +141,7 @@ EditTextWidget.prototype.execute = function() {
 	this.editClass = this.getAttribute("class");
 	this.editPlaceholder = this.getAttribute("placeholder");
 	this.editFocusPopup = this.getAttribute("focusPopup");
-	this.onkeyupdate = this.getAttribute("onkeyupdate","yes"); 
+	this.onkeyupdate = this.getAttribute("onkeyupdate","no"); 
 	// Get the editor element tag and type
 	var tag,type;
 	if(this.editField === "text") {
