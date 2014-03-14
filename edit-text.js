@@ -4,19 +4,34 @@ type: application/javascript
 module-type: widget
 
 Edit-text widget
- 
+
 \*/
 (function(){
 
 /*jslint node: true, browser: true */
-/*global $tw: false */
 "use strict";
 
 var MIN_TEXT_AREA_HEIGHT = 100; // Minimum height of textareas in pixels
 
 var Widget = require("$:/core/modules/widgets/widget.js").widget;
-
+var doOnce =false;
 var EditTextWidget = function(parseTreeNode,options) {
+if(!doOnce) {
+	doOnce=true;
+	$tw.pageWidgetNode.oldrefresh = $tw.pageWidgetNode.refresh;
+	$tw.pageWidgetNode.refresh = function (changes,pageContainer,other) {
+		var tiddler,
+		allDraft = true;
+		for (var i in changes) {
+			tiddler = $tw.wiki.getTiddler(i);
+			allDraft = allDraft && tiddler && tiddler.hasField("norefresh")&&!$tw.utils.hop(changes[i],"deleted");
+			//if (!!tiddler) {alert(i+" "+tiddler.hasField("draft.of"))} else alert("notid");
+		}
+		if (!allDraft){
+			$tw.pageWidgetNode.oldrefresh(changes,pageContainer,other);
+		}
+	}
+}
 	this.initialise(parseTreeNode,options);
 };
 
@@ -37,7 +52,7 @@ EditTextWidget.prototype.render = function(parent,nextSibling) {
 	// Execute our logic
 	this.execute();
 	// Create our element
-	var editInfo = this.getEditInfo();
+	var editInfo = this.getEditInfo(true);
 	var domNode = this.document.createElement(this.editTag);
 	if(this.editType) {
 		domNode.setAttribute("type",this.editType);
@@ -53,20 +68,13 @@ EditTextWidget.prototype.render = function(parent,nextSibling) {
 	if(this.editTag === "textarea") {
 		domNode.appendChild(this.document.createTextNode(editInfo.value));
 	} else {
-		domNode.setAttribute("value",editInfo.value)
+		domNode.value = editInfo.value;
 	}
 	// Add an input event handler
-	if (this.onkeyupdate==="yes") { 
-		$tw.utils.addEventListeners(domNode,[
+	$tw.utils.addEventListeners(domNode,[
 		{name: "focus", handlerObject: this, handlerMethod: "handleFocusEvent"},
 		{name: "input", handlerObject: this, handlerMethod: "handleInputEvent"}
-		]);
-	}else {
-		$tw.utils.addEventListeners(domNode,[
-		{name: "focus", handlerObject: this, handlerMethod: "handleFocusEvent"},
-		{name: "blur",  handlerObject: this, handlerMethod: "handleblurEvent"}
-		]);
-	}
+	]);
 	// Insert the element into the DOM
 	parent.insertBefore(domNode,nextSibling);
 	this.domNodes.push(domNode);
@@ -80,7 +88,7 @@ EditTextWidget.prototype.render = function(parent,nextSibling) {
 /*
 Get the tiddler being edited and current value
 */
-EditTextWidget.prototype.getEditInfo = function() {
+EditTextWidget.prototype.getEditInfo = function(Initialise) {
 	// Get the edit value
 	var self = this,
 		value,
@@ -96,10 +104,10 @@ EditTextWidget.prototype.getEditInfo = function() {
 		};
 	} else {
 		// Get the current tiddler and the field name
-		var tiddler = this.wiki.getTiddler(this.editTitle);
+		var tiddler = (!!Initialise)?this.wiki.getTiddler(this.editTitle):this.tiddler;
 		if(tiddler) {
 			// If we've got a tiddler, the value to display is the field string value
-			value = tiddler.getFieldString(this.editField);
+			value = (!!Initialise)?tiddler.getFieldString(this.editField):this.value;
 		} else {
 			// Otherwise, we need to construct a default value for the editor
 			switch(this.editField) {
@@ -122,8 +130,23 @@ EditTextWidget.prototype.getEditInfo = function() {
 				updateFields = {
 					title: self.editTitle
 				};
+			if (self.onkeyupdate!="yes" && !!tiddler && tiddler.hasField("draft.of")) {
+				updateFields.norefresh = true;
+				/*
+				if (self.editField=="text") {//remove text restriction and check flag
+					updateFields.norefresh = true;
+				} else {
+					if (tiddler.hasField("norefresh")) delete tiddler.fields.norefresh;
+				}
+				* */
+			} else {
+					if (!!tiddler && tiddler.hasField("norefresh")) delete tiddler.fields.norefresh;
+			}
+			
 			updateFields[self.editField] = value;
-			self.wiki.addTiddler(new $tw.Tiddler(self.wiki.getCreationFields(),tiddler,updateFields,self.wiki.getModificationFields()));
+			self.value =value;
+			self.tiddler=new $tw.Tiddler(self.wiki.getCreationFields(),tiddler,updateFields,self.wiki.getModificationFields());
+			self.wiki.addTiddler(self.tiddler);
 		};
 	}
 	return {value: value, update: update};
@@ -141,7 +164,8 @@ EditTextWidget.prototype.execute = function() {
 	this.editClass = this.getAttribute("class");
 	this.editPlaceholder = this.getAttribute("placeholder");
 	this.editFocusPopup = this.getAttribute("focusPopup");
-	this.onkeyupdate = this.getAttribute("onkeyupdate","no"); 
+	this.onkeyupdate =this.getAttribute("onkeyupdate","no"); 
+	alert(this.onkeyupdate);
 	// Get the editor element tag and type
 	var tag,type;
 	if(this.editField === "text") {
@@ -172,7 +196,7 @@ EditTextWidget.prototype.refresh = function(changedTiddlers) {
 		this.refreshSelf();
 		return true;
 	} else if(changedTiddlers[this.editTitle]) {
-		this.updateEditor(this.getEditInfo().value);
+		this.updateEditor(this.getEditInfo(true).value);
 		return true;
 	}
 	return false;
@@ -232,12 +256,6 @@ EditTextWidget.prototype.fixHeight = function() {
 /*
 Handle a dom "input" event
 */
-EditTextWidget.prototype.handleblurEvent = function(event) {
-	this.saveChanges(this.domNodes[0].value);
-	this.fixHeight();
-	return true;
-};
-
 EditTextWidget.prototype.handleInputEvent = function(event) {
 	this.saveChanges(this.domNodes[0].value);
 	this.fixHeight();
@@ -257,7 +275,7 @@ EditTextWidget.prototype.handleFocusEvent = function(event) {
 };
 
 EditTextWidget.prototype.saveChanges = function(text) {
-	var editInfo = this.getEditInfo();
+	var editInfo = this.getEditInfo(this.onkeyupdate=="yes");
 	if(text !== editInfo.value) {
 		editInfo.update(text);
 	}
